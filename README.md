@@ -87,7 +87,16 @@ v fmt -verify simd/ simd_test.v tier_test.v
 
 `tools/check-lanes.sh` prints the lane each run actually used and fails if a run
 asked for one lane and got another. `tools/check-targets.sh` shows the lane in
-the generated output rather than claiming one.
+the generated output rather than claiming one. Both skip a check whose toolchain
+is missing, with a printed reason, and the addon gate check asserts the gate's
+own message rather than a non-zero exit, because a compiler that is simply absent
+also exits non-zero.
+
+CI runs these same scripts rather than repeating their commands, so a lane that
+passes there passes here. The jobs install only tools Ubuntu packages (tcc,
+clang, mingw-w64); zig is not one of them and comes from an action, and a target
+whose toolchain never arrives is skipped with its reason printed rather than
+failing the job.
 
 ## State
 
