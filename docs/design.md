@@ -27,6 +27,12 @@ A build gets exactly one, and `simd.lane_name()` reports it.
 No `#include` of `xmmintrin.h` or `arm_neon.h`, no `__builtin_*`, no intrinsic
 calls, no `#flag`, no C file in the library. The vector work is written in V.
 
+The pure V lane leans on one library: vlib's `math.sqrt` for the `sqrt` kernel,
+because there is no `sqrt` builtin on `f32` (`f32.sqrt` is `unknown method or
+field`). It computes in f64 and narrows, which is correctly rounded for an f32
+input and is what the hardware kernels produce too, so the two lanes agree on
+every input the tests exercise.
+
 The C compiler is still in the loop on a native lane: V lowers an `asm` block to
 an asm template in the generated C, and the C compiler assembles it. That is
 assembly, not a compiler extension, and it is the same asm on every compiler that

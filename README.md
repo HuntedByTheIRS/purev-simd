@@ -36,11 +36,26 @@ that fused rounding follows the lane.
 
 ## Using it
 
-Point V at the checkout, or vendor the `simd/` directory next to your project:
+Vendoring is the simple case. Copy `simd/` next to your project and import it: V
+finds a module directory beside the source it is compiling, so no path flag is
+needed.
+
+```sh
+cp -r /path/to/purev-simd/simd /your/project/simd
+v run your_program.v
+```
+
+To point V at the checkout instead, `-path` has to carry the standard module
+directories along with the checkout:
 
 ```sh
 v -path "/path/to/purev-simd|@vlib|@vmodules" run your_program.v
 ```
+
+`-path` replaces V's default search paths rather than adding to them, and the
+pure V lane's `sqrt` goes through vlib's `math` (there is no `sqrt` builtin on
+`f32`), so a `-path` holding only the checkout fails with `cannot import module
+"math"`.
 
 To pick a lane, and to see what a lane is worth on your machine:
 
