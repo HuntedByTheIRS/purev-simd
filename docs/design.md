@@ -91,6 +91,19 @@ wide enough to fill it: for four lanes, AVX2 and AVX-512 do not beat SSE2, which
 is why the addon mechanism is demonstrated with FMA instead. Where those files
 would go is in docs/backends.md.
 
+The lanes are a portability story before they are a speed story, and the
+benchmark says so on the machine this was written on: one operation at a time
+through a kernel that takes pointers and carries a `memory` clobber costs more
+than the same arithmetic inlined as V, because the accumulator leaves the
+register file on every call and the optimiser is told to forget what it knew.
+Measured on linux/amd64, `bench/f32x4_bench.v` reports the scalar loop at about
+0.8x the sse2 lane's time per operation, and about 0.7x the pure V lane's, which
+is the same code with a different name. Filling a 128-bit register to compute
+four lanes is simply not a lot of work. What makes a lane worth having is a
+wider type that needs the wider register, or code that keeps the vectors in
+registers across a loop instead of crossing a function boundary per operation.
+Both are future work; neither is here.
+
 `mul_add` does not promise fused rounding, matching vlib. It does not promise
 split rounding either: the `fma` and `neon` lanes round once, `sse2` and `pure_v`
 round twice, and a C compiler is allowed to contract the split lanes into an FMA
