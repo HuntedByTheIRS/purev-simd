@@ -1,0 +1,15 @@
+# Build output
+*.o
+*.obj
+*.exe
+*.out
+out/
+v_build/
+*.tmp.c
+.vtmp/
+
+# Agent side state (plans, probes, capture generators) never gets committed.
+.omh/
+
+# Cross target build products
+build/
