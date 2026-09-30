@@ -8,41 +8,47 @@ import time
 // what the selected lane is worth on this machine. Run it with the lane you care
 // about:
 //
-//	v -path . run bench/f32x4_bench.v
-//	v -path . -cc gcc run bench/f32x4_bench.v
-//	v -path . -cc gcc -d simd_addon_fma run bench/f32x4_bench.v
+//	v -path "@vlib|@vmodules|." run bench/f32x4_bench.v
+//	v -path "@vlib|@vmodules|." -cc gcc run bench/f32x4_bench.v
+//	v -path "@vlib|@vmodules|." -cc gcc -d simd_addon_fma run bench/f32x4_bench.v
 //
 // The numbers are a smoke signal, not a benchmark suite: a pass the optimiser
 // cannot remove, no warm-up policy, and no measurements across machines.
+//
+// Read the ratio with the call in mind. A native kernel is a function call with
+// a `memory` clobber per operation, so the accumulator leaves the register file
+// every iteration, and the scalar loop it is compared against is free to keep
+// everything in registers. The comparison says what an operation costs end to
+// end, not what one instruction costs.
 const iterations = 4_000_000
 
-fn measure_lane(a [4]f32, b [4]f32) f32 {
-	mut acc := a
+fn measure_lane(mut a [4]f32, b [4]f32) f32 {
 	for _ in 0 .. iterations {
-		acc = backend.add_f32x4(backend.mul_f32x4(acc, b), b)
+		a = backend.add_f32x4(backend.mul_f32x4(a, b), b)
 	}
-	return acc[0]
+	return a[0]
 }
 
-fn measure_reference(a [4]f32, b [4]f32) f32 {
-	mut acc := a
+fn measure_reference(mut a [4]f32, b [4]f32) f32 {
 	for _ in 0 .. iterations {
-		acc = backend.add_f32x4_pure_v(backend.mul_f32x4_pure_v(acc, b), b)
+		a = backend.add_f32x4_pure_v(backend.mul_f32x4_pure_v(a, b), b)
 	}
-	return acc[0]
+	return a[0]
 }
 
 fn main() {
-	a := simd.f32x4(1.1, 2.2, 3.3, 4.4).to_array()
+	a := simd.f32x4(1.1, 2.2, 3.3, 4.4)
+	mut seed := a.to_array()
 	b := simd.broadcast_f32x4(1.000001).to_array()
 	println('lane: ${simd.lane_name()}, ${iterations} iterations of add(mul(acc, b), b)')
 
-	start := time.sys_mono_now()
-	lane_checksum := measure_lane(a, b)
+	mut start := time.sys_mono_now()
+	lane_checksum := measure_lane(mut seed, b)
 	lane_ns := time.sys_mono_now() - start
 
+	seed = a.to_array()
 	start = time.sys_mono_now()
-	reference_checksum := measure_reference(a, b)
+	reference_checksum := measure_reference(mut seed, b)
 	reference_ns := time.sys_mono_now() - start
 
 	println('lane      : ${f64(lane_ns) / f64(iterations) * 1000.0:.2f} ns/op (checksum ${lane_checksum:e})')
