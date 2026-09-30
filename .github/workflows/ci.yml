@@ -1,0 +1,51 @@
+name: ci
+
+# Thin glue: the checks themselves live in tools/, so a lane that passes here
+# passes on a workstation too. This workflow has not been run yet.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lanes:
+    name: lanes (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vlang/setup-v@v1
+      - name: second C compiler
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: format
+        run: v fmt -verify simd/ simd_test.v tier_test.v
+      - name: every lane this host can select
+        run: tools/check-lanes.sh
+
+  targets:
+    name: cross targets (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vlang/setup-v@v1
+      - name: cross tools
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zig
+      - name: windows, arm64, and the pure V fallbacks
+        run: tools/check-targets.sh
+      - name: NEON words against the assembler
+        run: tools/check-neon-encodings.sh
+
+  macos:
+    name: macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vlang/setup-v@v1
+      - run: v test .
+
+  windows:
+    name: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vlang/setup-v@v1
+      - run: v test .
