@@ -23,6 +23,9 @@ PATHS="$ROOT|@vlib|@vmodules"
 mkdir -p "$OUT"
 cd "$ROOT"
 
+# shellcheck source=tools/lib.sh
+. "$ROOT/tools/lib.sh"
+
 want() {
 	command -v "$1" >/dev/null 2>&1
 }
@@ -41,25 +44,31 @@ if want x86_64-w64-mingw32-gcc; then
 	$V -os windows -cc x86_64-w64-mingw32-gcc -path "$PATHS" -o "$OUT/demo.exe" \
 		examples/demo.v >/dev/null 2>&1
 	file "$OUT/demo.exe" | sed 's/^/  /'
-	echo "  native instructions in the generated C: $($V -os windows -cc x86_64-w64-mingw32-gcc -o "$OUT/demo_windows.c" examples/demo.v >/dev/null 2>&1; native_instructions "$OUT/demo_windows.c")"
+	$V -os windows -cc x86_64-w64-mingw32-gcc -o "$OUT/demo_windows.c" examples/demo.v >/dev/null 2>&1
+	echo "  native instructions in the generated C: $(native_instructions "$OUT/demo_windows.c")"
 else
 	echo 'windows/amd64 (mingw): skipped, x86_64-w64-mingw32-gcc not found'
 fi
 
 if want zig; then
 	echo 'linux/arm64 (zig cc, cross assembled):'
-	$V -os linux -arch arm64 -cc zig -o "$OUT/demo_arm64.c" examples/demo.v >/dev/null 2>&1
+	# tier_test.v exercises all six kernels, so every NEON word the module can
+	# emit shows up in the object.
 	$V -os linux -arch arm64 -cc zig -o "$OUT/tier_arm64.c" tier_test.v >/dev/null 2>&1
 	zig cc -target aarch64-linux-gnu -O2 -w -c "$OUT/tier_arm64.c" -o "$OUT/tier_arm64.o"
-	if want llvm-objdump-21; then
-		DUMP=llvm-objdump-21
-	elif want llvm-objdump; then
-		DUMP=llvm-objdump
+	if ! DUMP=$(find_disassembler "$OUT/tier_arm64.o"); then
+		echo '  assembled, but skipped the readback: no disassembler here reads aarch64'
+		echo "  the object is at $OUT/tier_arm64.o"
 	else
-		DUMP=objdump
+		neon=$("$DUMP" -d "$OUT/tier_arm64.o" \
+			| grep -E '^\s+[0-9a-f]+:\s+[0-9a-f]+\s+f(add|sub|mul|div|sqrt|mla)\s+v' \
+			| sed 's/^ *[0-9a-f]*: *[0-9a-f]* *//' | sort -u)
+		if [ -z "$neon" ]; then
+			echo "  FAILED: the aarch64 object holds no NEON kernels, so the neon lane was not selected ($DUMP)"
+			exit 1
+		fi
+		printf '%s\n' "$neon" | sed 's/^/  /'
 	fi
-	$DUMP -d "$OUT/tier_arm64.o" | grep -E '^\s+[0-9a-f]+:\s+[0-9a-f]+\s+f(add|sub|mul|div|sqrt|mla)\s+v' \
-		| sed 's/^ *[0-9a-f]*: *[0-9a-f]* *//' | sort -u | sed 's/^/  /'
 else
 	echo 'linux/arm64: skipped, zig not found'
 fi
