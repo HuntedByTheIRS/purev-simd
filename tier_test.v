@@ -86,6 +86,47 @@ fn test_mul_add_rounds_the_way_its_lane_allows() {
 	}
 }
 
+// The samples above are the shapes a reviewer thinks of. This is the version the
+// implementation does not get a vote on: awkward magnitudes crossed with each
+// other, then a reproducible sequence of pairs, all four arithmetic operations
+// plus sqrt, lane against reference. The sequence comes from a linear congruential
+// generator rather than a random source, so the run is the same on every machine
+// and a disagreement can be reproduced from the seed.
+fn test_lane_arithmetic_matches_the_reference_over_a_sweep() {
+	awkward := [f32(0), -0.0, 1.0, -1.0, 1e-38, 1.1754944e-38, 5.8774718e-39, 3.4028235e38, 0.1,
+		1.0 / 3.0, 16777216.0, 1e38]
+	for x in awkward {
+		for y in awkward {
+			a := [x, x, -x, -x]!
+			b := [y, -y, y, -y]!
+			assert backend.add_f32x4(a, b) == backend.add_f32x4_pure_v(a, b)
+			assert backend.sub_f32x4(a, b) == backend.sub_f32x4_pure_v(a, b)
+			assert backend.mul_f32x4(a, b) == backend.mul_f32x4_pure_v(a, b)
+			if y != 0.0 {
+				assert backend.div_f32x4(a, b) == backend.div_f32x4_pure_v(a, b)
+			}
+		}
+		if x >= 0.0 {
+			assert backend.sqrt_f32x4([x, x, x, x]!) == backend.sqrt_f32x4_pure_v([x, x, x, x]!)
+		}
+	}
+
+	mut s := u32(12345)
+	for _ in 0 .. 20_000 {
+		s = s * 1664525 + 1013904223
+		x := f32(f64(s >> 8) / 16777216.0)
+		s = s * 1664525 + 1013904223
+		y := f32(f64(s >> 8) / 16777216.0) + 0.5
+		a := [x, x, -x, -x]!
+		b := [y, -y, y, -y]!
+		assert backend.add_f32x4(a, b) == backend.add_f32x4_pure_v(a, b)
+		assert backend.sub_f32x4(a, b) == backend.sub_f32x4_pure_v(a, b)
+		assert backend.mul_f32x4(a, b) == backend.mul_f32x4_pure_v(a, b)
+		assert backend.div_f32x4(a, b) == backend.div_f32x4_pure_v(a, b)
+		assert backend.sqrt_f32x4([x, x, x, x]!) == backend.sqrt_f32x4_pure_v([x, x, x, x]!)
+	}
+}
+
 // The lane a build reports has to be the lane it runs, and the public entry
 // points have to agree with the lane the backend reports.
 fn test_reported_lane_matches_the_public_api() {
