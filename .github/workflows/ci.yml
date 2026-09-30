@@ -1,7 +1,12 @@
 name: ci
 
 # Thin glue: the checks themselves live in tools/, so a lane that passes here
-# passes on a workstation too. This workflow has not been run yet.
+# passes on a workstation too.
+#
+# Every command below was run by hand on linux/amd64 against V 0.5.2 before it
+# was written here; the workflow itself has not been run on a runner. The
+# compiler comes from setup-v and may be newer than 0.5.2, which is the part of
+# this file with the most room to surprise.
 
 on:
   push:
@@ -14,8 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: vlang/setup-v@v1
-      - name: second C compiler
-        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: compilers the lanes need
+        # clang and tcc are both packaged for Ubuntu. tcc is not needed to build
+        # the module, it is needed to prove the addon gate fires.
+        run: sudo apt-get update && sudo apt-get install -y clang tcc
       - name: format
         run: v fmt -verify simd/ simd_test.v tier_test.v
       - name: every lane this host can select
@@ -28,7 +35,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: vlang/setup-v@v1
       - name: cross tools
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zig
+        # mingw-w64 is packaged for Ubuntu, zig is not (packages.ubuntu.com has
+        # no `zig` for noble), so zig comes from an action. A tool that still
+        # fails to appear is not fatal: check-targets.sh prints a reason for each
+        # target it skips.
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - uses: mlugg/setup-zig@v2
       - name: windows, arm64, and the pure V fallbacks
         run: tools/check-targets.sh
       - name: NEON words against the assembler
