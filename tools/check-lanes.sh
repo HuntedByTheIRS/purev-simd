@@ -12,6 +12,9 @@ set -eu
 
 V="${V:-v}"
 PATHS="@vlib|@vmodules|."
+WORK="${TMPDIR:-/tmp}/purev-check-lanes.$$"
+mkdir -p "$WORK"
+trap 'rm -rf "$WORK"' EXIT
 
 run_lane() {
 	label="$1"
@@ -51,8 +54,26 @@ if command -v gcc >/dev/null 2>&1 && [ -r /proc/cpuinfo ] && grep -qw fma /proc/
 fi
 
 # The addon gates are supposed to fail loudly, not fall back quietly.
-if $V -d simd_addon_fma -cc tcc -o /dev/null examples/demo.v >/dev/null 2>&1; then
-	echo 'tcc accepted -d simd_addon_fma: the addon gate is not firing'
-	exit 1
+#
+# The assertion is the gate's own message, not just a non-zero exit: a `-cc tcc`
+# where tcc is not installed also exits non-zero, and a check that cannot tell
+# those apart passes on a machine that never ran the gate. The plain build first
+# answers whether tcc is usable here at all.
+if $V -cc tcc -o "$WORK/tcc_probe" examples/demo.v >/dev/null 2>&1; then
+	if gate_out=$($V -d simd_addon_fma -cc tcc -o "$WORK/tcc_gate" examples/demo.v 2>&1); then
+		echo 'tcc accepted -d simd_addon_fma: the addon gate is not firing'
+		exit 1
+	fi
+	case "$gate_out" in
+		*simd_addon_fma*)
+			printf '%-28s %s\n' 'addon gate (tcc)' "rejected: $(printf '%s\n' "$gate_out" | grep -m1 'simd:')"
+			;;
+		*)
+			echo 'the addon build under tcc failed, but not with the gate:'
+			printf '%s\n' "$gate_out" | head -3
+			exit 1
+			;;
+	esac
+else
+	echo 'addon gate (tcc): skipped, no usable tcc here'
 fi
-printf '%-28s lane=%-8s rejected with tcc\n' 'addon gate (tcc)' 'n/a'
