@@ -5,8 +5,9 @@ module backend
 //
 // Layout
 //
-//	backend/backend.v       lane ladder, dispatch, and lane reporting (this file)
-//	backend/default.v       the pure V lane: always compiled, never gated, the reference
+//	backend/backend.v         lane ladder, dispatch, and lane reporting (this file)
+//	backend/default.v         the pure V lane: always compiled, never gated, the reference
+//	backend/sse2_amd64.c.v    x86-64 SSE2 kernels for the sse2 lane
 //
 // A native lane lands as two edits: a kernel file next to this one, and a branch
 // in the ladder below plus a branch in the operations at the bottom.
@@ -22,6 +23,7 @@ module backend
 // Lane names the kernel set a build runs.
 pub enum Lane {
 	pure_v
+	sse2
 }
 
 // lane is the whole lane decision, and every dispatch function below reads it.
@@ -31,13 +33,26 @@ pub enum Lane {
 // order of preference:
 //
 //	- `-d simd_force_pure_v`  the caller asked for the pure V lane whatever else fits
-//	- anything else           the pure V lane, which compiles on every target
-pub const lane = 'pure_v'
+//	- amd64                   GCC/Clang, C backend: SSE2 kernels, split mul_add
+//	- anything else           tcc, MSVC, JS, WASM, the native backends, other archs
+//
+// GCC and Clang are the only C compilers that assemble V inline assembly, so tcc
+// and MSVC fall through to the pure V lane instead of failing to build.
+$if simd_force_pure_v ? {
+	pub const lane = 'pure_v'
+} $else $if amd64 && !tinyc && !msvc && @BACKEND == 'c' {
+	pub const lane = 'sse2'
+} $else {
+	pub const lane = 'pure_v'
+}
 
 // active_lane returns lane as a Lane, for callers that prefer a typed comparison
 // over lane_name().
 pub fn active_lane() Lane {
-	return .pure_v
+	return match lane {
+		'sse2' { .sse2 }
+		else { .pure_v }
+	}
 }
 
 // has_native_lane reports whether the build runs on anything other than the pure
@@ -49,35 +64,59 @@ pub fn has_native_lane() bool {
 // add_f32x4 adds corresponding lanes.
 @[inline]
 pub fn add_f32x4(a [4]f32, b [4]f32) [4]f32 {
-	return add_f32x4_pure_v(a, b)
+	$if lane == 'sse2' {
+		return add_f32x4_sse2(a, b)
+	} $else {
+		return add_f32x4_pure_v(a, b)
+	}
 }
 
 // sub_f32x4 subtracts corresponding lanes.
 @[inline]
 pub fn sub_f32x4(a [4]f32, b [4]f32) [4]f32 {
-	return sub_f32x4_pure_v(a, b)
+	$if lane == 'sse2' {
+		return sub_f32x4_sse2(a, b)
+	} $else {
+		return sub_f32x4_pure_v(a, b)
+	}
 }
 
 // mul_f32x4 multiplies corresponding lanes.
 @[inline]
 pub fn mul_f32x4(a [4]f32, b [4]f32) [4]f32 {
-	return mul_f32x4_pure_v(a, b)
+	$if lane == 'sse2' {
+		return mul_f32x4_sse2(a, b)
+	} $else {
+		return mul_f32x4_pure_v(a, b)
+	}
 }
 
 // div_f32x4 divides corresponding lanes.
 @[inline]
 pub fn div_f32x4(a [4]f32, b [4]f32) [4]f32 {
-	return div_f32x4_pure_v(a, b)
+	$if lane == 'sse2' {
+		return div_f32x4_sse2(a, b)
+	} $else {
+		return div_f32x4_pure_v(a, b)
+	}
 }
 
 // sqrt_f32x4 returns the square root of each lane.
 @[inline]
 pub fn sqrt_f32x4(a [4]f32) [4]f32 {
-	return sqrt_f32x4_pure_v(a)
+	$if lane == 'sse2' {
+		return sqrt_f32x4_sse2(a)
+	} $else {
+		return sqrt_f32x4_pure_v(a)
+	}
 }
 
-// mul_add_f32x4 returns v * multiplier + addend for each lane. The pure V lane
-// rounds twice, the way separate multiply and add instructions do.
+// mul_add_f32x4 returns v * multiplier + addend for each lane. SSE2 has no fused
+// multiply-add, so the sse2 lane rounds twice, like the pure V lane.
 pub fn mul_add_f32x4(v [4]f32, multiplier [4]f32, addend [4]f32) [4]f32 {
-	return mul_add_f32x4_pure_v(v, multiplier, addend)
+	$if lane == 'sse2' {
+		return mul_add_f32x4_sse2(v, multiplier, addend)
+	} $else {
+		return mul_add_f32x4_pure_v(v, multiplier, addend)
+	}
 }
